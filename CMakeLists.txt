@@ -27,6 +27,17 @@ add_executable(${PROJECT_NAME} ${Src} ${QRC_SOURCES} ${Engine} ${Forms} ${Shader
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core)
 
+find_package(VTK REQUIRED)
+if (VTK_VERSION VERSION_GREATER "9.00.0")
+#                # vtk_module_autoinit is needed
+                message("vtk version is ${VTK_VERSION}, module_autoinit")
+                vtk_module_autoinit(
+                TARGETS ${PROJECT_NAME}
+                MODULES ${VTK_LIBRARIES}
+                )
+endif ()
+target_link_libraries(${PROJECT_NAME} PUBLIC ${VTK_LIBRARIES})
+
 set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES
     ${BUNDLE_ID_OPTION}

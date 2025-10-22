@@ -28,6 +28,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vtkSmartPointer.h>
+#include <vtkGenericDataObjectReader.h>
+#include <vtkImageData.h>
+#include <vtkMetaImageReader.h>
+#include <vtkXMLImageDataReader.h>
+#include <vtkPolyDataReader.h>
+#include <vtkStructuredPointsReader.h>
+#include <vtkStructuredPoints.h>
+#include <vtkNIFTIImageReader.h>
 
 
 /*!
@@ -87,6 +96,7 @@ RayCastVolume::~RayCastVolume()
  */
 void RayCastVolume::load_volume(const QString& filename) {
     std::vector<unsigned char> data;
+    unsigned char* data_ptr;
 
     QRegularExpression re {"^.*\\.([^\\.]+)$"};
     QRegularExpressionMatch match = re.match(filename);
@@ -95,6 +105,7 @@ void RayCastVolume::load_volume(const QString& filename) {
         throw std::runtime_error("Cannot determine file extension.");
     }
 
+    vtkSmartPointer<vtkImageData> imageData;
     const std::string extension {match.captured(1).toLower().toStdString()};
     if ("vtk" == extension) {
         VTKVolume volume {filename.toStdString()};
@@ -104,6 +115,21 @@ void RayCastVolume::load_volume(const QString& filename) {
         m_spacing = QVector3D(std::get<0>(volume.spacing()), std::get<1>(volume.spacing()), std::get<2>(volume.spacing()));
         m_range = volume.range();
         data = volume.data();
+        data_ptr = data.data();
+    }
+    else  if ("gz" == extension) {
+        vtkSmartPointer<vtkNIFTIImageReader> reader = vtkSmartPointer<vtkNIFTIImageReader>::New();
+        reader->SetFileName(filename.toStdString().c_str());
+        reader->Update();
+		imageData = reader->GetOutput();
+		int* dim = imageData->GetDimensions();
+		double* origin = imageData->GetOrigin();
+		double* spacing = imageData->GetSpacing();
+        m_size = QVector3D(dim[0], dim[1], dim[2]);
+        m_origin = QVector3D(origin[0], origin[1], origin[2]);
+        m_spacing = QVector3D(spacing[0], spacing[1], spacing[2]);
+		m_range = { imageData->GetScalarRange()[0], imageData->GetScalarRange()[1] };
+        data_ptr = reinterpret_cast<unsigned char*>(imageData->GetScalarPointer());
     }
     else {
         throw std::runtime_error("Unrecognised extension '" + extension + "'.");
@@ -118,7 +144,7 @@ void RayCastVolume::load_volume(const QString& filename) {
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  // The array on the host has 1 byte alignment
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, m_size.x(), m_size.y(), m_size.z(), 0, GL_RED, GL_UNSIGNED_BYTE, data.data());
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, m_size.x(), m_size.y(), m_size.z(), 0, GL_RED, GL_UNSIGNED_BYTE, data_ptr);
     glBindTexture(GL_TEXTURE_3D, 0);
 }
 
@@ -146,7 +172,7 @@ void RayCastVolume::create_noise(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1); //设置像素存储模式 TODO GL_UNPACK_ALIGNMENT
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); //设置像素存储模式 TODO GL_UNPACK_ALIGNMENT
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, noise.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 }
